@@ -1,40 +1,47 @@
-import { chromium } from 'playwright';
+import { test, expect } from '@playwright/test';
+import dotenv from 'dotenv';
 
-(async () => {
-  // Inicia el navegador
-  const browser = await chromium.launch({ headless: false });
-  const context = await browser.newContext();
-  const page = await context.newPage();
+// Cargar las variables de entorno
+dotenv.config();
 
-  // Navega a la página de inicio de sesión
-  await page.goto('https://smart-support.avangenio.net/login');
+// Verificar que todas las variables de entorno necesarias estén definidas
+const { LOGIN_URL, CHAT_URL, EMAIL, PASSWORD } = process.env;
 
-  // Verifica que el título de la página sea correcto
-  const title = await page.title();
-  console.log(`Page title: ${title}`);
-  if (title !== 'Bienvenido') {
-    console.error('El título de la página no es el esperado');
-  }
+if (!LOGIN_URL) throw new Error('LOGIN_URL is not defined');
+if (!CHAT_URL) throw new Error('CHAT_URL is not defined');
+if (!EMAIL) throw new Error('EMAIL is not defined');
+if (!PASSWORD) throw new Error('PASSWORD is not defined');
 
-  // Introduce el correo electrónico
-  await page.fill('input[name="email"]', 'example@mail.com');
+test.describe('User Authentication Flow', () => {
+  test('Successful login', async ({ page }) => {
+    await page.goto(LOGIN_URL);
+    await page.waitForLoadState('networkidle'); // Espera a que la red esté inactiva
+    await page.fill('input[name="email"]', EMAIL);
+    await page.fill('input[name="password"]', PASSWORD);
+    await expect(page.getByRole('button', { name: 'Continúe', exact: true })).toBeVisible({ timeout: 10000 });
+    await page.getByRole('button', { name: 'Continúe', exact: true }).click();
+    await expect(page).toHaveURL(CHAT_URL, { timeout: 20000 });
+  });
 
-  // Introduce la contraseña
-  await page.fill('input[name="password"]', 'yourpassword');
+  test('Failed login with incorrect password', async ({ page }) => {
+    await page.goto(LOGIN_URL);
+    await page.waitForLoadState('networkidle');
+    await page.fill('input[name="email"]', EMAIL);
+    await page.fill('input[name="password"]', 'wrongpassword');
+    await expect(page.getByRole('button', { name: 'Continúe', exact: true })).toBeVisible({ timeout: 10000 });
+    await page.getByRole('button', { name: 'Continúe', exact: true }).click();
+    // Verificar que el mensaje de error sea visible
+    await expect(page.locator('text=Credenciales inválidas')).toBeVisible({ timeout: 10000 });
+  });
 
-  // Haz clic en el botón de iniciar sesión
-  await page.click('text=Iniciar sesión');
-
-  // Espera a que la navegación termine
-  await page.waitForNavigation();
-
-  // Verifica que la URL cambie después del inicio de sesión
-  const currentUrl = page.url();
-  console.log(`Current URL: ${currentUrl}`);
-  if (currentUrl === 'https://smart-support.avangenio.net/login') {
-    console.error('El inicio de sesión falló, la URL no cambió');
-  }
-
-  // Cierra el navegador
-  await browser.close();
-})();
+  test('Failed login with incorrect email', async ({ page }) => {
+    await page.goto(LOGIN_URL);
+    await page.waitForLoadState('networkidle');
+    await page.fill('input[name="email"]', 'wronguser@mail.com');
+    await page.fill('input[name="password"]', PASSWORD);
+    await expect(page.getByRole('button', { name: 'Continúe', exact: true })).toBeVisible({ timeout: 10000 });
+    await page.getByRole('button', { name: 'Continúe', exact: true }).click();
+    // Verificar que el mensaje de error sea visible
+    await expect(page.locator('text=Credenciales inválidas')).toBeVisible({ timeout: 10000 });
+  });
+});
